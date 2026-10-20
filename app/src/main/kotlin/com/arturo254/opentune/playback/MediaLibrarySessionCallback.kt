@@ -49,6 +49,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.guava.future
+import kotlinx.coroutines.withContext
+import com.arturo254.opentune.innertube.YouTube
+import com.arturo254.opentune.innertube.models.SongItem
 import kotlinx.coroutines.plus
 import javax.inject.Inject
 import kotlin.math.min
@@ -743,7 +746,23 @@ constructor(
                     if (query.isBlank()) return@future defaultResult
 
                     val matchedSongs = database.searchSongs(query, previewSize = 50).first()
-                    val songId = matchedSongs.firstOrNull()?.id ?: return@future defaultResult
+                    val songId = matchedSongs.firstOrNull()?.id
+                    if (songId == null) {
+                        // Sem resultado na biblioteca: busca no YouTube Music e toca a primeira faixa
+                        val onlineSong =
+                            withContext(Dispatchers.IO) {
+                                YouTube
+                                    .search(query, YouTube.SearchFilter.FILTER_SONG)
+                                    .getOrNull()
+                                    ?.items
+                                    ?.firstOrNull { it is SongItem } as? SongItem
+                            } ?: return@future defaultResult
+                        return@future MediaSession.MediaItemsWithStartPosition(
+                            listOf(onlineSong.toMediaItem()),
+                            0,
+                            startPositionMs,
+                        )
+                    }
                     val allSongs = database.songsByCreateDateAsc().first()
                     MediaSession.MediaItemsWithStartPosition(
                         allSongs.map { it.toMediaItem() },
